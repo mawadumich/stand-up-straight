@@ -45,7 +45,7 @@ class PoseEstimator:
 
     def detect(self, frame: np.ndarray) -> Optional[PoseData]:
         h, w = frame.shape[:2]
-        small = cv2.resize(frame, (self.width, self.height))
+        small = cv2.resize(frame, (self.width, self.height)) # Reduce computation by resizing
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         results = self.pose.process(rgb)
 
@@ -54,8 +54,9 @@ class PoseEstimator:
 
         keypoints = np.zeros((33, 3), dtype=np.float32)
         for i, lm in enumerate(results.pose_landmarks.landmark):
-            keypoints[i] = [lm.x * w, lm.y * h, lm.visibility]
+            keypoints[i] = [lm.x * w, lm.y * h, lm.visibility] # Normalized coordinates to pixels
 
+        # 3D pose estimation relative to camera 
         world_keypoints = None
         if getattr(results, "pose_world_landmarks", None):
             world_keypoints = np.zeros((33, 4), dtype=np.float32)
@@ -67,6 +68,7 @@ class PoseEstimator:
     def close(self):
         self.pose.close()
 
+# Posture quality based on feature alignment, symmetry as well as angles for neck, spine and shoulders. 
 class PostureAnalyzer:
     def __init__(self, good_thresh=80, warn_thresh=60):
         self.good_thresh = good_thresh
@@ -104,6 +106,7 @@ class PostureAnalyzer:
         normalized[:, 1] = (kp[:, 1] - center[1]) / max(torso_len, 1)
         return normalized, torso_len, (float(center[0]), float(center[1]))
 
+    # Joint angle computation
     def _compute_angles(self, kp: np.ndarray) -> dict:
         angles = {}
 
@@ -116,7 +119,7 @@ class PostureAnalyzer:
 
         def line_angle(p1, p2):
             raw = float(np.degrees(np.arctan2(p2[1] - p1[1], p2[0] - p1[0])))
-            # Normalize to nearest horizontal alignment so level shoulders/hips are near 0°
+            # Normalize to horizontal so level shoulders/hips are near 0
             return min(abs(raw), abs(raw - 180.0), abs(raw + 180.0))
 
         if kp[7, 2] > 0.3 and kp[11, 2] > 0.3:
@@ -167,6 +170,7 @@ class PostureAnalyzer:
         Xc = X - X.mean(axis=0, keepdims=True)
         Yc = Y - Y.mean(axis=0, keepdims=True)
 
+        # SVD 
         H = Xc.T @ Yc
         U, _, Vt = np.linalg.svd(H)
         R = Vt.T @ U.T
@@ -223,7 +227,7 @@ class PostureAnalyzer:
 
     def _extract_features(self, kp: np.ndarray, world_kp: Optional[np.ndarray] = None) -> Dict[str, float]:
         feats: Dict[str, float] = {}
-        _, torso_len, _ = self._normalize(kp)
+        _, torso_len, _ = self._normalize(kp) # Remove distance effect via normalization
         torso_len = max(torso_len, 1e-6)
 
         if all(kp[i, 2] > 0.3 for i in [11, 12]):
@@ -295,8 +299,8 @@ class PostureAnalyzer:
             return {
                 "head_center": (0.10, 1.4),
                 "shoulder_tilt": (0.08, 1.2),
-                "hip_tilt": (0.08, 1.0),
-                "spine_shift": (0.16, 1.2),
+                "hip_tilt": (0.10, 1.0),
+                "spine_shift": (0.18, 1.2),
                 "shoulder_depth": (0.2, 1.0),
                 "hip_depth": (0.2, 0.8),
                 "shoulder_hip_depth_align": (0.2, 1.3),
@@ -329,7 +333,7 @@ class PostureAnalyzer:
         kp = pose.keypoints
         view, view_conf = self._estimate_view(kp)
         angles = self._compute_angles(kp)
-        current_features = self._extract_features(kp, pose.world_keypoints)
+        current_features = self._extract_features(kp, pose.world_keypoints) 
         baseline_features = self.baseline_features.copy()
 
         problems = []
@@ -479,6 +483,7 @@ class OpticalFlowTracker:
             self.prev_gray = gray
             return self.prev_keypoints
 
+        # LK method for optical flow
         pts = self.prev_keypoints[valid, :2].reshape(-1, 1, 2).astype(np.float32)
         next_pts, status, _ = cv2.calcOpticalFlowPyrLK(self.prev_gray, gray, pts, None, **self.lk_params)
 
@@ -494,7 +499,7 @@ class OpticalFlowTracker:
         self.prev_keypoints = tracked.copy()
         return tracked
 
-# === OVERLAY RENDERER ===
+# UI Overlay
 class OverlayRenderer:
     COLORS = {"good": (0, 255, 0), "warning": (0, 165, 255), "bad": (0, 0, 255)}
     CONNECTIONS = [(11,12),(11,13),(13,15),(12,14),(14,16),(11,23),(12,24),(23,24),(23,25),(25,27),(24,26),(26,28)]
@@ -526,7 +531,7 @@ class OverlayRenderer:
                 banner_color = (0, 255, 0)  # Green
                 banner_text = "Good Posture Detected"
             else:
-                banner_color = (255, 0, 0)  # Blue (OpenCV uses BGR)
+                banner_color = (255, 0, 0)  # Blue (OpenCV uses BGR instead of RGB)
                 banner_text = "Stand up Straight"
 
 
@@ -543,7 +548,7 @@ class OverlayRenderer:
             cv2.putText(out, f"Baseline: {score.baseline_view}", (10, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255,255,255), 2)
             cv2.putText(out, f"Conf: {score.view_confidence:.2f}", (10, 116), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255,255,255), 2)
 
-            # Show current vs baseline feature targets for the most relevant active features.
+            # Show current vs baseline feature targets for active features
             y = 148
             cv2.putText(out, "Feature Cur Base", (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255,255,0), 1)
             y += 18
@@ -590,11 +595,11 @@ class PostureFixApp:
         self.calibrating = False
         self.calib_frames = []
 
-        # Json should go in PostureFixApp class instead
+        # Variables for json output
         self.json = []
         self.last_sec = -1
 
-        # start time instead of time stamp
+        # start time instead of universal time stamp to keep output consistent
         self.start_time = None
     
         self._build_gui()
@@ -672,7 +677,7 @@ class PostureFixApp:
 
     def _stop(self):
         self.running = False
-        self._save_json() # Confusion matrix stuffs
+        self._save_json() # Json for Confusion matrix 
         if self.cap:
             self.cap.release()
             self.cap = None
@@ -683,9 +688,6 @@ class PostureFixApp:
         self.canvas.delete("all")
 
     def _calibrate(self):
-        #if not self.running:
-        #    messagebox.showwarning("Warning", "Start video first")
-        #    return
         self.calibrating = True
         self.calib_frames = []
         self.calib_label.config(text="Calibrating...")
@@ -718,6 +720,7 @@ class PostureFixApp:
             self._stop()
             return
 
+        # output video size
         frame = cv2.resize(frame, (640, 480))
 
         pose = self.estimator.detect(frame)
@@ -725,7 +728,7 @@ class PostureFixApp:
             smoothed_kp = self.kalman.apply(pose.keypoints)
             pose = PoseData(keypoints=smoothed_kp, timestamp=pose.timestamp, frame_size=pose.frame_size, world_keypoints=pose.world_keypoints)
             self.current_pose = pose
-            self.tracker.track(frame, pose.keypoints)
+            self.tracker.track(frame, pose.keypoints) 
             self.current_score = self.analyzer.analyze(pose)
             # JSOn part for the confusion matrix 
             elasped = time.time() - self.start_time
@@ -740,7 +743,7 @@ class PostureFixApp:
                 self.calib_frames.append(pose)
 
         else: # Fallback for when subject is moving quickly or rotating
-            tracked = self.tracker.track(frame)
+            tracked = self.tracker.track(frame) # Motion based tracking
             if tracked is not None and self.current_pose is not None:
                 tracked = self.kalman.apply(tracked)
                 world_kp = self.current_pose.world_keypoints if self.current_pose is not None else None
