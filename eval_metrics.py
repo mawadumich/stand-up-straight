@@ -1,9 +1,9 @@
 import json
 
-with open("actual.json", "r") as f:
+with open("./results/actual.json", "r") as f:
     gt_data = json.load(f)
 
-with open("predictions.json", "r") as f:
+with open("./results/predictions.json", "r") as f:
     pred_data = json.load(f)
 
 gt = {item["frame"]: item["label"] for item in gt_data}
