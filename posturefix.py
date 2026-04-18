@@ -296,26 +296,26 @@ class PostureAnalyzer:
                 "head_center": (0.10, 1.4),
                 "shoulder_tilt": (0.08, 1.2),
                 "hip_tilt": (0.08, 1.0),
-                "spine_shift": (0.10, 1.2),
-                "shoulder_depth": (0.18, 1.0),
-                "hip_depth": (0.18, 0.8),
-                "shoulder_hip_depth_align": (0.18, 1.3),
+                "spine_shift": (0.16, 1.2),
+                "shoulder_depth": (0.2, 1.0),
+                "hip_depth": (0.2, 0.8),
+                "shoulder_hip_depth_align": (0.2, 1.3),
                 "shoulder_hip_ratio": (0.20, 0.6),
             }
         if "side" in view:
             return {
-                "head_forward_z": (0.18, 1.8),
-                "torso_stack_z": (0.16, 1.8),
-                "shoulder_hip_depth_align": (0.16, 1.6),
-                "head_forward": (0.16, 0.7),
+                "head_forward_z": (0.2, 1.8),
+                "torso_stack_z": (0.2, 1.8),
+                "shoulder_hip_depth_align": (0.22, 1.6),
+                "head_forward": (0.18, 0.7),
             }
         return {
-            "head_center": (0.14, 1.0),
-            "spine_shift": (0.14, 1.0),
+            "head_center": (0.16, 1.0),
+            "spine_shift": (0.16, 1.0),
             "shoulder_depth": (0.20, 1.0),
             "hip_depth": (0.20, 0.8),
-            "torso_stack_z": (0.18, 1.4),
-            "shoulder_hip_depth_align": (0.18, 1.2),
+            "torso_stack_z": (0.2, 1.4),
+            "shoulder_hip_depth_align": (0.2, 1.2),
             "head_forward_z": (0.20, 1.0),
         }
 
@@ -585,6 +585,7 @@ class PostureFixApp:
         self.current_score = None
         self.fps = 0.0
         self.frame_count = 0
+        self.frame_index = 1
         self.last_fps_time = time.time()
         self.calibrating = False
         self.calib_frames = []
@@ -660,6 +661,7 @@ class PostureFixApp:
         self.start_time = time.time()
         self.last_sec = -1
         self.json = []
+        self.frame_index = 1
 
         self.running = True
         self.start_btn.config(state=tk.DISABLED)
@@ -711,6 +713,7 @@ class PostureFixApp:
             return
 
         ret, frame = self.cap.read()
+        self.frame_index +=1
         if not ret:
             self._stop()
             return
@@ -724,16 +727,14 @@ class PostureFixApp:
             self.current_pose = pose
             self.tracker.track(frame, pose.keypoints)
             self.current_score = self.analyzer.analyze(pose)
-            # JSOn part for the confusion matrix that Maikl wants
-            elasped = int(time.time() - self.start_time)
-            if self.current_score and elasped != self.last_sec:
-                self.last_sec = elasped
+            # JSOn part for the confusion matrix 
+            elasped = time.time() - self.start_time
+            if self.current_score:
+                self.last_sec = elasped # We'll use frame instead of second
 
                 self.json.append({
-                    "label": "good_posture" if self.current_score.quality == "good" else "bad_posture",
-                    "score": float(self.current_score.score),
-                    "elapsed seconds": elasped,
-                    "problems": self.current_score.problems
+                    "label": 1 if self.current_score.quality == "good" else 0,
+                    "frame": self.frame_index,
                 })
             if self.calibrating:
                 self.calib_frames.append(pose)
@@ -745,16 +746,14 @@ class PostureFixApp:
                 world_kp = self.current_pose.world_keypoints if self.current_pose is not None else None
                 self.current_pose = PoseData(keypoints=tracked, timestamp=time.time(), frame_size=(640, 480), world_keypoints=world_kp)
                 self.current_score = self.analyzer.analyze(self.current_pose)
-                # JSOn part for the confusion matrix that Maikl wants
-                elasped = int(time.time() - self.start_time)
-                if self.current_score and elasped != self.last_sec:
+                # JSOn part for the confusion matrix 
+                elasped = time.time() - self.start_time
+                if self.current_score:
                     self.last_sec = elasped
 
                     self.json.append({
-                        "label": "good_posture" if self.current_score.quality == "good" else "bad_posture",
-                        "score": float(self.current_score.score),
-                        "elapsed seconds": elasped,
-                        "problems": self.current_score.problems
+                        "label": 1 if self.current_score.quality == "good" else 0,
+                        "frame": self.frame_index,
                     })
             else:
                 self.current_pose = None
@@ -788,7 +787,7 @@ class PostureFixApp:
         self.canvas.image = photo
 
         if self.running:
-            self.root.after(10, self._update)
+            self.root.after(1, self._update) # Set MS
 
     def _on_close(self):
         self.running = False
