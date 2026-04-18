@@ -68,7 +68,7 @@ class PoseEstimator:
     def close(self):
         self.pose.close()
 
-# Posture quality based on feature alignment, symmetry as well as angles for neck, spine and shoulders. 
+# Posture quality based on feature alignment, symmetry as well as angles for neck, spine and shoulders.
 class PostureAnalyzer:
     def __init__(self, good_thresh=80, warn_thresh=60):
         self.good_thresh = good_thresh
@@ -182,7 +182,7 @@ class PostureAnalyzer:
         residual = np.linalg.norm(X_aligned - Yc, axis=1)
         rms = float(np.sqrt(np.mean(residual ** 2)))
 
-        # Nonlinear mapping: low residuals stay high, larger deviations fall faster.
+        # Nonlinear mapping so that larger deviations fall faster
         tolerance = 0.18
         return float(100.0 * np.exp(-0.5 * (rms / tolerance) ** 2))
 
@@ -325,7 +325,7 @@ class PostureAnalyzer:
 
     @staticmethod 
     def _soft_score(deviation: float, tolerance: float) -> float:
-        # Smooth, nonlinear falloff: large errors drop faster.
+        # Smooth, nonlinear falloff: large errors drop faster
         z = deviation / max(tolerance, 1e-6)
         return float(100.0 * np.exp(-0.5 * z * z))
 
@@ -349,7 +349,7 @@ class PostureAnalyzer:
             target = baseline_features.get(name, 0.0)
             deviation = abs(current_features[name] - target)
 
-            # Reduce trust if the relevant landmarks are weakly visible.
+            # Reduce trust if the relevant landmarks aren't visible
             visibility_scale = 1.0
             if "head" in name:
                 visibility_scale = 0.9 if (kp[0, 2] > 0.3 or kp[7, 2] > 0.3 or kp[8, 2] > 0.3) else 0.4
@@ -364,7 +364,7 @@ class PostureAnalyzer:
             if feature_score < 65:
                 problems.append(name)
 
-        # Angle terms remain as a light secondary check.
+        # Angle terms remain as a light secondary check
         angle_cfg = {"neck": (25.0, 0.5), "shoulders": (12.0, 0.5), "hips": (12.0, 0.4), "spine": (18.0, 0.6)}
         for name, value in angles.items():
             if name not in angle_cfg:
@@ -452,7 +452,7 @@ class KalmanFilter:
                 smoothed[i, 2] = conf * 0.9
         return smoothed
 
-# Lucas - Kanade or we can try something else
+# Lucas - Kanade method
 class OpticalFlowTracker:
     def __init__(self):
         self.prev_gray = None
